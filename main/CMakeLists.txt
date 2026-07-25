@@ -1,0 +1,24 @@
+idf_component_register(
+    SRCS
+        "app_main.cpp"
+        "display.cpp"
+        "touch.cpp"
+        "power.cpp"
+        "sd_music.cpp"
+        "audio_player.cpp"
+        "audio_local.cpp"
+        "bt_source.cpp"
+        "ui.cpp"
+    INCLUDE_DIRS "."
+    REQUIRES
+        nvs_flash
+        driver
+        fatfs
+        sdmmc
+        bt
+        esp_timer
+        esp_driver_spi
+        esp_driver_gpio
+        esp_driver_dac
+        ESP32-A2DP
+)

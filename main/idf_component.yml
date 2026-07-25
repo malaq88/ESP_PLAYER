@@ -1,0 +1,4 @@
+## Local component: components/ESP32-A2DP (patched, no arduino-audio-tools)
+dependencies:
+  idf:
+    version: ">=5.0"
