@@ -778,6 +778,14 @@ void ui_handle_touch(void)
     if (s_screen != UI_SCREEN_HOME &&
         tx < (BOARD_SCR_W / 2) &&
         hit_rect(tx, ty, BACK_X, BACK_Y, BACK_W, BACK_H, 8)) {
+        /* Inside browser: Back goes up one level (tracks → albums → home) */
+        if (s_screen == UI_SCREEN_BROWSER && s_browse_level == BROWSE_TRACKS) {
+            ESP_LOGI(TAG, "Browser Back -> albums");
+            s_browse_level = BROWSE_ALBUMS;
+            s_track_scroll = 0;
+            ui_draw_browser();
+            return;
+        }
         nav_back();
         ui_redraw_current();
         return;

@@ -18,7 +18,7 @@ static const char *TAG = "app";
 
 extern "C" void app_main(void)
 {
-    ESP_LOGI(TAG, "ESP PLAYER — CYD Album (ESP-IDF) build-sd-v28");
+    ESP_LOGI(TAG, "ESP PLAYER — CYD Album (ESP-IDF) build-sd-v29");
 
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
