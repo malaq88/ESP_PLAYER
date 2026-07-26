@@ -18,6 +18,10 @@ extern "C" {
 
 void bt_source_start(void);
 bool bt_source_is_connected(void);
+bool bt_source_is_enabled(void);
+/** Enable/disable Classic BT + A2DP (async; may take a moment). */
+void bt_source_set_enabled(bool enabled);
+bool bt_source_is_busy(void);
 const char *bt_source_peer_name(void);
 void bt_source_set_volume_percent(int pct);
 

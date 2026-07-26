@@ -7,7 +7,14 @@ extern "C" {
 #endif
 
 void rgb_led_init(void);
-void rgb_led_update(bool bt_connected, bool playing);
+/**
+ * Rear RGB (active LOW):
+ *  - BT on + not connected + idle → blink red/blue (searching)
+ *  - playing + BT connected       → solid blue
+ *  - playing + speaker            → solid green
+ *  - otherwise                    → off
+ */
+void rgb_led_update(bool bt_enabled, bool bt_connected, bool playing);
 
 void power_init(void);
 void power_note_activity(void);

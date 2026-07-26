@@ -16,7 +16,7 @@ UI theme: **neon cyberpunk / CRT** (cyan, magenta, electric blue).
 | Saída local no alto-falante do CYD **ou** fone Bluetooth A2DP | Local CYD speaker output **or** Bluetooth A2DP headset |
 | Indicador **SPK / BT** na UI + boost de volume no amp | **SPK / BT** UI badge + local amp volume boost |
 | UI touch: Home → Música / Bluetooth → Browser → Player | Touch UI: Home → Music / Bluetooth → Browser → Player |
-| Backlight com timeout e botão BOOT | Backlight idle timeout + BOOT button |
+| LED RGB: azul fixo (BT) / verde fixo (speaker) só no play | RGB LED: solid blue (BT) / solid green (speaker) while playing only |
 
 ---
 

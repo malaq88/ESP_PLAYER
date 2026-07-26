@@ -19,14 +19,20 @@ static int64_t ms_now(void)
 
 static int64_t s_rgb_last_ms;
 static bool s_rgb_phase;
-static bool s_rgb_prev_bt;
-static bool s_rgb_prev_play;
 
 static void rgb_all_off(void)
 {
     gpio_set_level((gpio_num_t)PIN_RGB_R, 1);
     gpio_set_level((gpio_num_t)PIN_RGB_G, 1);
     gpio_set_level((gpio_num_t)PIN_RGB_B, 1);
+}
+
+static void rgb_solid(bool r_on, bool g_on, bool b_on)
+{
+    /* Active LOW */
+    gpio_set_level((gpio_num_t)PIN_RGB_R, r_on ? 0 : 1);
+    gpio_set_level((gpio_num_t)PIN_RGB_G, g_on ? 0 : 1);
+    gpio_set_level((gpio_num_t)PIN_RGB_B, b_on ? 0 : 1);
 }
 
 void rgb_led_init(void)
@@ -37,48 +43,35 @@ void rgb_led_init(void)
     gpio_config(&io);
     rgb_all_off();
     s_rgb_last_ms = ms_now();
+    s_rgb_phase = false;
 }
 
-void rgb_led_update(bool bt_connected, bool playing)
+void rgb_led_update(bool bt_enabled, bool bt_connected, bool playing)
 {
     int64_t now = ms_now();
-    if (bt_connected != s_rgb_prev_bt || playing != s_rgb_prev_play) {
-        s_rgb_prev_bt = bt_connected;
-        s_rgb_prev_play = playing;
-        s_rgb_last_ms = now;
-        s_rgb_phase = false;
-        rgb_all_off();
+
+    if (playing) {
+        if (bt_connected)
+            rgb_solid(false, false, true);  /* blue = A2DP */
+        else
+            rgb_solid(false, true, false);  /* green = speaker */
+        return;
     }
 
-    if (bt_connected && playing) {
-        if (now - s_rgb_last_ms >= 450) {
-            s_rgb_last_ms = now;
-            s_rgb_phase = !s_rgb_phase;
-        }
-        gpio_set_level((gpio_num_t)PIN_RGB_R, 1);
-        if (s_rgb_phase) {
-            gpio_set_level((gpio_num_t)PIN_RGB_G, 0);
-            gpio_set_level((gpio_num_t)PIN_RGB_B, 1);
-        } else {
-            gpio_set_level((gpio_num_t)PIN_RGB_G, 1);
-            gpio_set_level((gpio_num_t)PIN_RGB_B, 0);
-        }
-    } else if (!bt_connected) {
+    /* Idle: blink red/blue while BT is on and waiting for a headset */
+    if (bt_enabled && !bt_connected) {
         if (now - s_rgb_last_ms >= 280) {
             s_rgb_last_ms = now;
             s_rgb_phase = !s_rgb_phase;
         }
-        gpio_set_level((gpio_num_t)PIN_RGB_G, 1);
-        if (s_rgb_phase) {
-            gpio_set_level((gpio_num_t)PIN_RGB_R, 0);
-            gpio_set_level((gpio_num_t)PIN_RGB_B, 1);
-        } else {
-            gpio_set_level((gpio_num_t)PIN_RGB_R, 1);
-            gpio_set_level((gpio_num_t)PIN_RGB_B, 0);
-        }
-    } else {
-        rgb_all_off();
+        if (s_rgb_phase)
+            rgb_solid(true, false, false);  /* red */
+        else
+            rgb_solid(false, false, true);  /* blue */
+        return;
     }
+
+    rgb_all_off();
 }
 
 /* ── Backlight + BOOT (power button) ─────────────────────── */

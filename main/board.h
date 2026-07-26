@@ -39,11 +39,11 @@
 /* Onboard amp (SC8002B/PAM8002A) via SPEAK/P4 — ESP32 DAC CH1 */
 #define PIN_SPK_DAC           26
 
-/* Touch calibration (raw ADC → screen) */
-#define TS_MINX               300
-#define TS_MAXX               3900
-#define TS_MINY               300
-#define TS_MAXY               3900
+/* Touch calibration (raw ADC → screen) — typical CYD / RNT ranges */
+#define TS_MINX               200
+#define TS_MAXX               3700
+#define TS_MINY               240
+#define TS_MAXY               3800
 
 #define DISPLAY_IDLE_OFF_MS   30000
 #define TOUCH_DEBOUNCE_MS     160

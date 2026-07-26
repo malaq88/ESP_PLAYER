@@ -21,8 +21,24 @@ static portMUX_TYPE s_scan_mux = portMUX_INITIALIZER_UNLOCKED;
 static bool s_user_choice;
 static uint8_t s_chosen[6];
 
+static bool s_enabled = true;
+static bool s_started = false;
+
 /* Declared in audio_player.cpp */
 extern int32_t audio_a2dp_fill(int16_t (*frames)[2], int32_t count);
+
+static void clear_scan_locked(void)
+{
+    s_scan_count = 0;
+    memset(s_scan, 0, sizeof(s_scan));
+}
+
+static void clear_scan(void)
+{
+    portENTER_CRITICAL(&s_scan_mux);
+    clear_scan_locked();
+    portEXIT_CRITICAL(&s_scan_mux);
+}
 
 static bool addr_eq(const uint8_t *a, const uint8_t *b)
 {
@@ -31,6 +47,8 @@ static bool addr_eq(const uint8_t *a, const uint8_t *b)
 
 static bool ssid_cb(const char *ssid, esp_bd_addr_t address, int rssi)
 {
+    if (!s_enabled) return false;
+
     bool accept = false;
     portENTER_CRITICAL(&s_scan_mux);
 
@@ -65,7 +83,7 @@ static int32_t data_cb(Frame *frame, int32_t count)
 {
     /* Do not drain the PCM ring unless a headset is actually streaming —
      * otherwise local DAC output (GPIO26) would starve. */
-    if (!s_a2dp.is_connected()) {
+    if (!s_enabled || !s_a2dp.is_connected()) {
         for (int32_t i = 0; i < count; i++) {
             frame[i].channel1 = 0;
             frame[i].channel2 = 0;
@@ -93,6 +111,7 @@ void bt_source_start(void)
     s_scan_count = 0;
     s_user_choice = false;
     s_peer[0] = '\0';
+    s_enabled = true;
 
     s_a2dp.set_auto_reconnect(false);
     s_a2dp.clean_last_connection();
@@ -100,12 +119,60 @@ void bt_source_start(void)
     s_a2dp.set_data_callback_in_frames(data_cb);
     s_a2dp.set_ssid_callback(ssid_cb);
     s_a2dp.start();
+    s_started = true;
     ESP_LOGI(TAG, "A2DP source started");
+}
+
+bool bt_source_is_enabled(void)
+{
+    return s_enabled;
+}
+
+bool bt_source_is_busy(void)
+{
+    return false; /* soft toggle is instant */
+}
+
+void bt_source_set_enabled(bool enabled)
+{
+    if (enabled == s_enabled) {
+        ESP_LOGI(TAG, "BT already %s", enabled ? "ON" : "OFF");
+        return;
+    }
+
+    if (!enabled) {
+        /* Soft off: disconnect + ignore scan/connect — avoid end() (can hang). */
+        s_enabled = false;
+        s_user_choice = false;
+        s_peer[0] = '\0';
+        clear_scan();
+        if (s_started && s_a2dp.is_connected()) {
+            s_a2dp.disconnect();
+            ESP_LOGI(TAG, "BT disconnect requested");
+        }
+        ESP_LOGI(TAG, "Bluetooth OFF (speaker mode)");
+        return;
+    }
+
+    s_user_choice = false;
+    s_peer[0] = '\0';
+    clear_scan();
+    if (!s_started) {
+        s_a2dp.set_auto_reconnect(false);
+        s_a2dp.clean_last_connection();
+        s_a2dp.set_volume(127);
+        s_a2dp.set_data_callback_in_frames(data_cb);
+        s_a2dp.set_ssid_callback(ssid_cb);
+        s_a2dp.start();
+        s_started = true;
+    }
+    s_enabled = true;
+    ESP_LOGI(TAG, "Bluetooth ON (scanning)");
 }
 
 bool bt_source_is_connected(void)
 {
-    return s_a2dp.is_connected();
+    return s_enabled && s_started && s_a2dp.is_connected();
 }
 
 const char *bt_source_peer_name(void)
@@ -143,6 +210,7 @@ bool bt_source_scan_get(int idx, bt_scan_entry_t *out)
 
 void bt_source_choose(const uint8_t addr[6], const char *name)
 {
+    if (!s_enabled) return;
     portENTER_CRITICAL(&s_scan_mux);
     memcpy(s_chosen, addr, 6);
     s_user_choice = true;

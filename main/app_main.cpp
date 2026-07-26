@@ -18,7 +18,7 @@ static const char *TAG = "app";
 
 extern "C" void app_main(void)
 {
-    ESP_LOGI(TAG, "ESP PLAYER — CYD Album (ESP-IDF) build-sd-v14");
+    ESP_LOGI(TAG, "ESP PLAYER — CYD Album (ESP-IDF) build-sd-v25");
 
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -38,7 +38,7 @@ extern "C" void app_main(void)
         ui_draw_error("SD Failed!");
         ESP_LOGE(TAG, "Insert FAT32 microSD. CYD pins: CS=5 MOSI=23 MISO=19 SCK=18");
         while (true) {
-            rgb_led_update(false, false);
+            rgb_led_update(false, false, false);
             vTaskDelay(pdMS_TO_TICKS(500));
         }
     }
@@ -54,7 +54,7 @@ extern "C" void app_main(void)
     if (tracks <= 0) {
         ui_draw_error("No music");
         while (true) {
-            rgb_led_update(bt_source_is_connected(), false);
+            rgb_led_update(bt_source_is_enabled(), bt_source_is_connected(), false);
             vTaskDelay(pdMS_TO_TICKS(200));
         }
     }
@@ -69,7 +69,7 @@ extern "C" void app_main(void)
 
     while (true) {
         bool playing = (audio_state() == PLAYER_PLAYING);
-        rgb_led_update(bt_source_is_connected(), playing);
+        rgb_led_update(bt_source_is_enabled(), bt_source_is_connected(), playing);
 
         ui_handle_touch();
         ui_bt_tick();

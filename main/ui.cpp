@@ -34,6 +34,8 @@ static int64_t s_last_vis_ms;
 static int s_bt_pick_scroll;
 static int s_last_bt_count = -1;
 static bool s_bt_connecting;
+static bool s_last_bt_enabled = true;
+static bool s_last_bt_busy = false;
 static int s_last_bar_h[NUM_VIS_BARS];
 static bool s_vis_valid;
 static audio_route_t s_last_route = AUDIO_ROUTE_NONE;
@@ -41,24 +43,45 @@ static int64_t s_last_route_ms;
 
 /* Layout */
 static const int HEADER_H = 28;
-static const int LIST_Y = 40;
-static const int FOOTER_H = 32;
+static const int LIST_Y_BASE = 40;
+static const int FOOTER_H = 44;
 static const int ITEM_H = 28;
 
 static const int BACK_X = 4, BACK_Y = 4, BACK_W = 52, BACK_H = 22;
 
-/* Player — simple WMP-like */
-static const int PL_TITLE_Y = 36;
-static const int PL_SPEC_Y = 72;
-static const int PL_SPEC_H = 70;
-static const int PL_SEEK_Y = 160;
-static const int PL_CTRL_Y = 210;
-static const int PL_VOL_Y = 278;
+/* Full-width NOW bar under header — Y-only hit (reliable on CYD) */
+static const int NOW_BAR_Y0 = 28;
+static const int NOW_BAR_H = 34;
+
+/* Player layout — DAP-style neon control deck */
+static const int PL_TITLE_Y = 34;
+static const int PL_SPEC_Y = 66;
+static const int PL_SPEC_H = 52;
+static const int PL_SEEK_Y = 132;
+static const int PL_VOL_Y = 280;
+
+/* Transport hit zones (keep Y-based play — most reliable on CYD) */
+static const int TR_PLAY_Y0 = 168;
+static const int TR_PLAY_Y1 = 228;
+static const int TR_ROW2_Y0 = 232;
+static const int TR_ROW2_Y1 = 274;
+static const int TR_MID_X = 120;
 
 static const int HIT_PAD = 4;
 
 static int64_t now_ms(void) { return esp_timer_get_time() / 1000; }
 static int footer_y(void) { return BOARD_SCR_H - FOOTER_H; }
+
+static bool music_is_active(void)
+{
+    return audio_state() == PLAYER_PLAYING || audio_state() == PLAYER_PAUSED;
+}
+
+/** List starts lower when the NOW bar is visible. */
+static int browser_list_y(void)
+{
+    return music_is_active() ? (NOW_BAR_Y0 + NOW_BAR_H + 2) : LIST_Y_BASE;
+}
 
 /** Compact SPK / BT badge (header or volume row). */
 static void draw_route_badge(int x, int y, uint16_t bg)
@@ -84,7 +107,7 @@ static bool hit_rect(int16_t tx, int16_t ty, int x, int y, int w, int h, int pad
 
 static int visible_slots(void)
 {
-    int vis = (footer_y() - LIST_Y) / ITEM_H;
+    int vis = (footer_y() - browser_list_y()) / ITEM_H;
     return vis < 1 ? 1 : vis;
 }
 
@@ -143,17 +166,68 @@ static void draw_back_btn(void)
     display_draw_text(BACK_X + 8, BACK_Y + 7, "< Back", theme::TEXT, theme::SURFACE, 1);
 }
 
+static void draw_now_btn(void)
+{
+    if (!music_is_active()) return;
+
+    display_fill_rect(0, NOW_BAR_Y0, BOARD_SCR_W, NOW_BAR_H, theme::ACCENT_DIM);
+    display_fill_rect(3, NOW_BAR_Y0 + 3, BOARD_SCR_W - 6, NOW_BAR_H - 6, theme::SURFACE);
+
+    char line[40];
+    const char *name = "Now Playing";
+    if (sd_music_track_count() > 0) {
+        char raw[40];
+        sd_music_get_display_name(sd_music_track_path(audio_current_track()), raw, sizeof(raw));
+        truncate_str(line, sizeof(line), raw, 22);
+        name = line;
+    }
+    display_draw_text(12, NOW_BAR_Y0 + 6, "NOW PLAYING", theme::ACCENT, theme::SURFACE, 1);
+    display_draw_text(12, NOW_BAR_Y0 + 18, name, theme::TEXT, theme::SURFACE, 1);
+    display_draw_text(200, NOW_BAR_Y0 + 12, ">", theme::ACCENT, theme::SURFACE, 2);
+}
+
+/** Full-width bar under header — only needs Y (same idea as the PLAY button). */
+static bool hit_now_btn(int16_t tx, int16_t ty)
+{
+    (void)tx;
+    if (!music_is_active()) return false;
+    return ty >= NOW_BAR_Y0 && ty < (NOW_BAR_Y0 + NOW_BAR_H);
+}
+
 static void draw_nav_footer(int page, int total_pages)
 {
     int fy = footer_y();
     display_fill_rect(0, fy, BOARD_SCR_W, FOOTER_H, theme::BG);
-    display_draw_hline(0, fy, BOARD_SCR_W, theme::SHADOW);
-    display_draw_text(14, fy + 12, "< Prev", theme::MUTED, theme::BG, 1);
-    display_draw_text(168, fy + 12, "Next >", theme::MUTED, theme::BG, 1);
-    char pg[24];
+    display_draw_hline(0, fy, BOARD_SCR_W, theme::ACCENT_DIM);
+
+    /* Two large halves — same pattern as player PREV/NEXT */
+    const int gap = 6;
+    const int btn_y = fy + 4;
+    const int btn_h = FOOTER_H - 8;
+    const int btn_w = (BOARD_SCR_W - 16 - gap) / 2;
+
+    display_fill_round_rect(8, btn_y, btn_w, btn_h, 8, theme::SURFACE2);
+    display_draw_text(8 + 10, btn_y + btn_h / 2 - 4, "< PREV", theme::ACCENT, theme::SURFACE2, 1);
+
+    display_fill_round_rect(8 + btn_w + gap, btn_y, btn_w, btn_h, 8, theme::SURFACE2);
+    display_draw_text(8 + btn_w + gap + 14, btn_y + btn_h / 2 - 4, "NEXT >", theme::ACCENT, theme::SURFACE2, 1);
+
+    char pg[16];
     snprintf(pg, sizeof(pg), "%d/%d", page, total_pages < 1 ? 1 : total_pages);
     int tw = display_text_width(pg, 1);
-    display_draw_text((BOARD_SCR_W - tw) / 2, fy + 12, pg, theme::TEXT, theme::BG, 1);
+    display_fill_rect((BOARD_SCR_W - tw) / 2 - 2, fy - 1, tw + 4, 10, theme::BG);
+    display_draw_text((BOARD_SCR_W - tw) / 2, fy, pg, theme::MUTED, theme::BG, 1);
+}
+
+/** Footer: left half = previous page, right half = next page. */
+static bool footer_hit_prev(int16_t tx, int16_t ty)
+{
+    return ty >= footer_y() && tx < (BOARD_SCR_W / 2);
+}
+
+static bool footer_hit_next(int16_t tx, int16_t ty)
+{
+    return ty >= footer_y() && tx >= (BOARD_SCR_W / 2);
 }
 
 static void draw_list_row(int y, const char *label, bool playing)
@@ -247,8 +321,11 @@ void ui_draw_home(void)
     s_last_route = audio_output_route();
 
     bool bt = bt_source_is_connected();
+    bool bt_on = bt_source_is_enabled();
     const char *music_sub = bt ? "Output: Bluetooth" : "Output: Speaker";
-    const char *bt_sub = bt ? "Connected" : "Connect headset";
+    const char *bt_sub = !bt_on ? "Powered off"
+                         : bt   ? "Connected"
+                                : "Connect headset";
 
     draw_home_card(HOME_MUSIC_Y, theme::ICON_MUSIC, "Music", music_sub);
     display_fill_circle(HOME_CARD_X + 36, HOME_MUSIC_Y + HOME_CARD_H / 2, 10, theme::HIGHLIGHT);
@@ -265,7 +342,28 @@ void ui_draw_home(void)
 
 /* ── Bluetooth Devices screen (NOT music browser) ─────────── */
 
-static const int BT_LIST_Y = 72;
+/* Full-width power row — easy to hit on resistive touch */
+static const int BT_PWR_Y = 50;
+static const int BT_PWR_H = 40;
+static const int BT_TOGGLE_X = 162;
+static const int BT_TOGGLE_W = 66;
+static const int BT_TOGGLE_H = 30;
+static const int BT_LIST_Y = 100;
+static const int BT_ITEM_H = 44;
+
+static void draw_bt_toggle(bool on)
+{
+    display_fill_rect(8, BT_PWR_Y, BOARD_SCR_W - 16, BT_PWR_H, theme::SURFACE);
+    display_draw_text(16, BT_PWR_Y + 14, "Bluetooth", theme::TEXT, theme::SURFACE, 1);
+    display_draw_text(110, BT_PWR_Y + 14, on ? "ON" : "OFF",
+                      on ? theme::OK : theme::MUTED, theme::SURFACE, 1);
+
+    int ty = BT_PWR_Y + (BT_PWR_H - BT_TOGGLE_H) / 2;
+    display_fill_rect(BT_TOGGLE_X, ty, BT_TOGGLE_W, BT_TOGGLE_H,
+                      on ? theme::ICON_BT : theme::SURFACE2);
+    int knob_x = on ? (BT_TOGGLE_X + BT_TOGGLE_W - 15) : (BT_TOGGLE_X + 15);
+    display_fill_circle(knob_x, ty + BT_TOGGLE_H / 2, 11, theme::HIGHLIGHT);
+}
 
 void ui_draw_bt_devices(void)
 {
@@ -275,32 +373,48 @@ void ui_draw_bt_devices(void)
     display_draw_text(64, 8, "BT DEVICES", theme::HIGHLIGHT, theme::ICON_BT, 1);
     display_draw_text(64, 26, "Pair a headset", theme::HIGHLIGHT, theme::ICON_BT, 1);
 
+    const bool enabled = bt_source_is_enabled();
+    s_last_bt_enabled = enabled;
+    s_last_bt_busy = false;
+
+    draw_bt_toggle(enabled);
+
+    if (!enabled) {
+        display_fill_rect(12, BT_LIST_Y, BOARD_SCR_W - 24, 90, theme::SURFACE);
+        display_draw_text(20, BT_LIST_Y + 20, "Bluetooth is OFF", theme::MUTED, theme::SURFACE, 1);
+        display_draw_text(20, BT_LIST_Y + 44, "Music uses SPEAK amp", theme::TEXT, theme::SURFACE, 1);
+        display_draw_text(20, BT_LIST_Y + 64, "LED: green while playing", theme::MUTED, theme::SURFACE, 1);
+        s_last_bt_count = -1;
+        return;
+    }
+
     if (bt_source_is_connected()) {
         s_bt_connecting = false;
-        display_fill_rect(12, 60, BOARD_SCR_W - 24, 80, theme::SURFACE);
-        display_draw_text(20, 72, "CONNECTED", theme::OK, theme::SURFACE, 1);
+        display_fill_rect(12, BT_LIST_Y, BOARD_SCR_W - 24, 100, theme::SURFACE);
+        display_draw_text(20, BT_LIST_Y + 14, "CONNECTED", theme::OK, theme::SURFACE, 1);
         const char *peer = bt_source_peer_name();
         char line[40];
         truncate_str(line, sizeof(line), peer && peer[0] ? peer : "Headset", 28);
-        display_draw_text(20, 96, line, theme::TEXT, theme::SURFACE, 1);
-        display_draw_text(20, 118, "Audio route: Bluetooth", theme::MUTED, theme::SURFACE, 1);
+        display_draw_text(20, BT_LIST_Y + 40, line, theme::TEXT, theme::SURFACE, 1);
+        display_draw_text(20, BT_LIST_Y + 64, "Audio route: Bluetooth", theme::MUTED, theme::SURFACE, 1);
+        display_draw_text(20, BT_LIST_Y + 82, "LED: blue while playing", theme::MUTED, theme::SURFACE, 1);
         s_last_bt_count = bt_source_scan_count();
         return;
     }
 
     if (s_bt_connecting) {
-        display_draw_text(12, 56, "Connecting...", theme::ACCENT, theme::BG, 1);
+        display_draw_text(12, BT_LIST_Y - 16, "Connecting...", theme::ACCENT, theme::BG, 1);
     } else {
         int n = bt_source_scan_count();
         char status[40];
         if (n <= 0)
-            strncpy(status, "Scanning for headsets...", sizeof(status));
+            strncpy(status, "Scanning... LED blinks R/B", sizeof(status));
         else
             snprintf(status, sizeof(status), "%d device(s) found", n);
-        display_draw_text(12, 56, status, theme::MUTED, theme::BG, 1);
+        display_draw_text(12, BT_LIST_Y - 16, status, theme::MUTED, theme::BG, 1);
     }
 
-    int vis = (footer_y() - BT_LIST_Y) / ITEM_H;
+    int vis = (footer_y() - BT_LIST_Y) / BT_ITEM_H;
     if (vis < 1) vis = 1;
     int n = bt_source_scan_count();
     int total_pages = (n + vis - 1) / vis;
@@ -312,12 +426,14 @@ void ui_draw_bt_devices(void)
         if (idx >= n) break;
         bt_scan_entry_t e;
         if (!bt_source_scan_get(idx, &e)) break;
-        int y = BT_LIST_Y + row * ITEM_H;
-        display_fill_rect(8, y + 2, BOARD_SCR_W - 16, ITEM_H - 4, theme::SURFACE);
-        display_fill_circle(22, y + ITEM_H / 2, 5, theme::ICON_BT);
+        int y = BT_LIST_Y + row * BT_ITEM_H;
+        display_fill_rect(8, y + 2, BOARD_SCR_W - 16, BT_ITEM_H - 4, theme::SURFACE);
+        display_fill_circle(28, y + BT_ITEM_H / 2, 10, theme::ICON_BT);
+        display_fill_circle(28, y + BT_ITEM_H / 2, 4, theme::HIGHLIGHT);
         char line[40];
-        truncate_str(line, sizeof(line), e.name, 26);
-        display_draw_text(36, y + 10, line, theme::TEXT, theme::SURFACE, 1);
+        truncate_str(line, sizeof(line), e.name, 24);
+        display_draw_text(48, y + 10, line, theme::TEXT, theme::SURFACE, 1);
+        display_draw_text(48, y + 26, "Tap to connect", theme::MUTED, theme::SURFACE, 1);
     }
     draw_nav_footer(page, total_pages);
     s_last_bt_count = n;
@@ -326,6 +442,15 @@ void ui_draw_bt_devices(void)
 void ui_bt_tick(void)
 {
     if (s_screen != UI_SCREEN_BT_DEVICES) return;
+
+    bool enabled = bt_source_is_enabled();
+    if (enabled != s_last_bt_enabled) {
+        ui_draw_bt_devices();
+        return;
+    }
+
+    if (!enabled) return;
+
     if (bt_source_is_connected()) {
         if (s_bt_connecting) {
             s_bt_connecting = false;
@@ -348,11 +473,10 @@ void ui_draw_browser(void)
 
     const char *title = (s_browse_level == BROWSE_ALBUMS) ? "Albums" : "< Albums";
     display_draw_text(64, 8, title, theme::TEXT, theme::SURFACE, 1);
-
-    if (audio_state() == PLAYER_PLAYING || audio_state() == PLAYER_PAUSED)
-        display_draw_text(170, 8, "Now >", theme::ACCENT, theme::SURFACE, 1);
     display_draw_hline(0, HEADER_H - 1, BOARD_SCR_W, theme::ACCENT_DIM);
+    draw_now_btn();
 
+    const int list_y = browser_list_y();
     int item_count = (s_browse_level == BROWSE_ALBUMS)
                          ? sd_music_album_count()
                          : sd_music_browse_track_count();
@@ -365,7 +489,7 @@ void ui_draw_browser(void)
     for (int i = 0; i < vis; i++) {
         int idx = scroll + i;
         if (idx >= item_count) break;
-        int y = LIST_Y + i * ITEM_H;
+        int y = list_y + i * ITEM_H;
         char name[40];
         bool playing = false;
         if (s_browse_level == BROWSE_ALBUMS) {
@@ -374,8 +498,7 @@ void ui_draw_browser(void)
             int pi = sd_music_browse_track_playlist_index(idx);
             sd_music_get_display_name(sd_music_track_path(pi), name, sizeof(name));
             truncate_str(name, sizeof(name), name, 28);
-            playing = (pi == audio_current_track() &&
-                       (audio_state() == PLAYER_PLAYING || audio_state() == PLAYER_PAUSED));
+            playing = (pi == audio_current_track() && music_is_active());
         }
         draw_list_row(y, name, playing);
     }
@@ -452,18 +575,22 @@ void ui_draw_player_progress(void)
     uint32_t el = audio_elapsed_sec();
     uint32_t dur = audio_duration_sec();
 
-    const int bx = 28, by = PL_SEEK_Y, bw = BOARD_SCR_W - 56, bh = 4;
-    display_fill_rect(bx - 4, by - 8, bw + 8, 40, theme::BG);
+    const int bx = 20, by = PL_SEEK_Y, bw = BOARD_SCR_W - 40, bh = 6;
+    display_fill_rect(0, by - 10, BOARD_SCR_W, 36, theme::BG);
 
-    display_fill_rect(bx, by, bw, bh, theme::BAR_TRACK);
-    int knob_x = bx;
+    /* Soft track capsule */
+    display_fill_round_rect(bx, by - 1, bw, bh + 2, 4, theme::SURFACE2);
+    display_fill_round_rect(bx + 1, by, bw - 2, bh, 3, theme::BAR_TRACK);
+
+    int knob_x = bx + 3;
     if (dur > 0) {
-        uint32_t fw = (uint32_t)(((uint64_t)el * (uint64_t)bw) / (uint64_t)dur);
-        if (fw > (uint32_t)bw) fw = (uint32_t)bw;
-        if (fw > 0) display_fill_rect(bx, by, (int)fw, bh, theme::BAR_FILL);
-        knob_x = bx + (int)fw;
+        uint32_t fw = (uint32_t)(((uint64_t)el * (uint64_t)(bw - 6)) / (uint64_t)dur);
+        if (fw > (uint32_t)(bw - 6)) fw = (uint32_t)(bw - 6);
+        if (fw > 0)
+            display_fill_round_rect(bx + 1, by, (int)fw + 2, bh, 3, theme::BAR_FILL);
+        knob_x = bx + 3 + (int)fw;
     }
-    display_fill_circle(knob_x, by + bh / 2, 6, theme::ACCENT);
+    display_fill_circle(knob_x, by + bh / 2, 7, theme::ACCENT);
     display_fill_circle(knob_x - 1, by + bh / 2 - 1, 2, theme::HIGHLIGHT);
 
     char tEl[12], tTot[12];
@@ -479,76 +606,80 @@ void ui_draw_player_progress(void)
 void ui_draw_volume(void)
 {
     int y = PL_VOL_Y;
-    display_fill_rect(0, y, BOARD_SCR_W, 42, theme::BG);
-    display_draw_text(30, y + 14, "-", theme::TEXT, theme::BG, 2);
+    display_fill_rect(0, y, BOARD_SCR_W, 40, theme::BG);
+
+    /* Volume capsule strip */
+    display_fill_round_rect(10, y + 2, BOARD_SCR_W - 20, 34, 10, theme::SURFACE);
+    display_draw_rect(10, y + 2, BOARD_SCR_W - 20, 34, theme::DIVIDER);
+
+    display_draw_text(22, y + 12, "-", theme::ACCENT, theme::SURFACE, 2);
 
     audio_route_t r = audio_output_route();
     const char *tag = (r == AUDIO_ROUTE_BLUETOOTH) ? "BT" : "SPK";
     uint16_t tag_c = (r == AUDIO_ROUTE_BLUETOOTH) ? theme::ICON_BT : theme::ICON_MUSIC;
     char vbuf[20];
-    snprintf(vbuf, sizeof(vbuf), "%s  %d%%", tag, audio_get_volume_percent());
+    snprintf(vbuf, sizeof(vbuf), "%s %d%%", tag, audio_get_volume_percent());
     int tw = display_text_width(vbuf, 1);
-    display_draw_text((BOARD_SCR_W - tw) / 2, y + 16, vbuf, tag_c, theme::BG, 1);
+    display_draw_text((BOARD_SCR_W - tw) / 2, y + 8, vbuf, tag_c, theme::SURFACE, 1);
 
-    /* Mini amp bar under the label */
-    const int bx = 70, by = y + 30, bw = BOARD_SCR_W - 140, bh = 3;
-    display_fill_rect(bx, by, bw, bh, theme::BAR_TRACK);
+    const int bx = 70, by = y + 24, bw = BOARD_SCR_W - 140, bh = 4;
+    display_fill_round_rect(bx, by, bw, bh, 2, theme::BAR_TRACK);
     int fill = (audio_get_volume_percent() * bw) / 100;
-    if (fill > 0) display_fill_rect(bx, by, fill, bh, tag_c);
+    if (fill > 0) display_fill_round_rect(bx, by, fill, bh, 2, tag_c);
 
-    display_draw_text(200, y + 14, "+", theme::TEXT, theme::BG, 2);
+    display_draw_text(204, y + 12, "+", theme::ACCENT, theme::SURFACE, 2);
 }
 
-static void draw_shuffle_icon(int cx, int cy, uint16_t c)
+static void draw_capsule_btn(int x, int y, int w, int h, uint16_t fill, uint16_t border)
 {
-    /* crossed arrows — simple */
-    display_draw_hline(cx - 10, cy - 4, 14, c);
-    display_draw_hline(cx - 10, cy + 4, 14, c);
-    display_fill_triangle(cx + 6, cy - 4, cx + 2, cy - 8, cx + 2, cy, c);
-    display_fill_triangle(cx + 6, cy + 4, cx + 2, cy, cx + 2, cy + 8, c);
-}
-
-static void draw_repeat_icon(int cx, int cy, uint16_t c, int mode)
-{
-    display_draw_hline(cx - 8, cy - 6, 12, c);
-    display_draw_hline(cx - 4, cy + 6, 12, c);
-    display_draw_vline(cx - 8, cy - 6, 12, c);
-    display_draw_vline(cx + 8, cy - 6, 12, c);
-    display_fill_triangle(cx + 4, cy - 6, cx + 8, cy - 10, cx + 8, cy - 2, c);
-    if (mode == 2)
-        display_draw_text(cx - 2, cy - 3, "1", c, theme::BG, 1);
+    display_fill_round_rect(x, y, w, h, 10, border);
+    display_fill_round_rect(x + 1, y + 1, w - 2, h - 2, 9, fill);
 }
 
 static void draw_transport(void)
 {
-    int y = PL_CTRL_Y;
-    display_fill_rect(0, y - 4, BOARD_SCR_W, 60, theme::BG);
+    /* Control deck background — glass/DAP strip */
+    display_fill_rect(0, TR_PLAY_Y0 - 4, BOARD_SCR_W, TR_ROW2_Y1 - TR_PLAY_Y0 + 8, theme::BG);
+    display_fill_round_rect(6, TR_PLAY_Y0 - 2, BOARD_SCR_W - 12,
+                            TR_ROW2_Y1 - TR_PLAY_Y0 + 4, 12, theme::SURFACE);
+    display_draw_hline(16, TR_PLAY_Y0, BOARD_SCR_W - 32, theme::ACCENT_DIM);
 
-    int cy = y + 24;
-    uint16_t sh_c = audio_shuffle_on() ? theme::ACCENT : theme::MUTED;
-    uint16_t rp_c = audio_repeat_mode() ? theme::ACCENT : theme::MUTED;
-
-    draw_shuffle_icon(28, cy, sh_c);
-
-    /* prev */
-    display_fill_triangle(70, cy, 82, cy - 10, 82, cy + 10, theme::TEXT);
-    display_fill_triangle(80, cy, 92, cy - 10, 92, cy + 10, theme::TEXT);
-
-    /* play circle — cyan neon */
-    display_fill_circle(120, cy, 22, theme::ACCENT_DIM);
-    display_fill_circle(120, cy, 20, theme::SURFACE);
-    if (audio_state() == PLAYER_PLAYING) {
-        display_fill_rect(112, cy - 10, 5, 20, theme::ACCENT);
-        display_fill_rect(123, cy - 10, 5, 20, theme::ACCENT);
-    } else {
-        display_fill_triangle(114, cy - 12, 114, cy + 12, 134, cy, theme::ACCENT);
+    /* Center PLAY — neon ring + solid disc (FiiO / Spotify-style hero button) */
+    {
+        const int cx = BOARD_SCR_W / 2;
+        const int cy = (TR_PLAY_Y0 + TR_PLAY_Y1) / 2;
+        display_fill_circle(cx, cy, 28, theme::ACCENT_DIM);   /* outer glow */
+        display_fill_circle(cx, cy, 24, theme::SURFACE2);
+        display_fill_circle(cx, cy, 22, theme::SURFACE);
+        if (audio_state() == PLAYER_PLAYING) {
+            display_fill_rect(cx - 10, cy - 12, 7, 24, theme::ACCENT);
+            display_fill_rect(cx + 3, cy - 12, 7, 24, theme::ACCENT);
+        } else {
+            display_fill_triangle(cx - 8, cy - 14, cx - 8, cy + 14, cx + 14, cy, theme::ACCENT);
+        }
+        /* tiny highlight speck */
+        display_fill_circle(cx - 8, cy - 10, 2, theme::HIGHLIGHT);
     }
 
-    /* next */
-    display_fill_triangle(160, cy - 10, 160, cy + 10, 172, cy, theme::TEXT);
-    display_fill_triangle(170, cy - 10, 170, cy + 10, 182, cy, theme::TEXT);
+    /* PREV | NEXT — rounded capsules */
+    {
+        const int y = TR_ROW2_Y0 + 2;
+        const int h = TR_ROW2_Y1 - TR_ROW2_Y0 - 4;
+        const int gap = 8;
+        const int w = (BOARD_SCR_W - 24 - gap) / 2;
 
-    draw_repeat_icon(212, cy, rp_c, audio_repeat_mode());
+        draw_capsule_btn(12, y, w, h, theme::SURFACE2, theme::ACCENT_DIM);
+        int pcx = 12 + w / 2;
+        int pcy = y + h / 2;
+        display_fill_triangle(pcx - 8, pcy, pcx + 6, pcy - 10, pcx + 6, pcy + 10, theme::TEXT);
+        display_fill_rect(pcx - 12, pcy - 10, 3, 20, theme::TEXT);
+
+        draw_capsule_btn(12 + w + gap, y, w, h, theme::SURFACE2, theme::ACCENT_DIM);
+        int ncx = 12 + w + gap + w / 2;
+        int ncy = y + h / 2;
+        display_fill_triangle(ncx - 6, ncy - 10, ncx - 6, ncy + 10, ncx + 8, ncy, theme::TEXT);
+        display_fill_rect(ncx + 9, ncy - 10, 3, 20, theme::TEXT);
+    }
 }
 
 void ui_draw_player(void)
@@ -581,7 +712,12 @@ void ui_draw_player(void)
     char abuf[28];
     truncate_str(abuf, sizeof(abuf), alb && alb[0] ? alb : "-", 26);
     display_draw_text_centered(PL_TITLE_Y + 16, 220, abuf, theme::MUTED, theme::BG, 1);
+    /* Accent underline under metadata */
+    display_fill_rect(90, PL_TITLE_Y + 30, 60, 2, theme::ACCENT_DIM);
 
+    /* Spectrum in a framed neon card */
+    display_fill_round_rect(12, PL_SPEC_Y - 4, BOARD_SCR_W - 24, PL_SPEC_H + 8, 8, theme::SURFACE);
+    display_draw_rect(12, PL_SPEC_Y - 4, BOARD_SCR_W - 24, PL_SPEC_H + 8, theme::DIVIDER);
     draw_vis_full();
     ui_draw_player_progress();
     draw_transport();
@@ -624,30 +760,39 @@ void ui_tick_progress(void)
 
 /* ── Touch ───────────────────────────────────────────────── */
 
-static void wait_release(void)
-{
-    int64_t rel = now_ms();
-    int16_t dx, dy;
-    while (touch_read(&dx, &dy)) {
-        if (now_ms() - rel > 250) break;
-        vTaskDelay(pdMS_TO_TICKS(5));
-    }
-}
-
 void ui_handle_touch(void)
 {
     if (!power_backlight_on()) return;
     int16_t tx, ty;
-    if (!touch_read(&tx, &ty)) return;
+    /* Stable tap: average/median while pressed — not the noisy first contact */
+    if (!touch_read_tap(&tx, &ty)) return;
     power_note_activity();
 
     if (now_ms() - s_last_touch_ms < TOUCH_DEBOUNCE_MS) return;
     s_last_touch_ms = now_ms();
-    wait_release();
 
-    /* Global back (all but Home) */
+    ESP_LOGI(TAG, "tap %d,%d screen=%d", (int)tx, (int)ty, (int)s_screen);
+
+    /*
+     * Browser NOW must be checked BEFORE Back. On this CYD the X axis can
+     * drift; a tap on the visual NOW button was often classified as Back.
+     */
+    if (s_screen == UI_SCREEN_BROWSER && hit_now_btn(tx, ty)) {
+        ESP_LOGI(TAG, "Browser -> NOW player (ty=%d)", (int)ty);
+        /* Force player screen even if stack thinks we're already there */
+        if (s_screen != UI_SCREEN_PLAYER) {
+            if (s_stack_n < (int)(sizeof(s_stack) / sizeof(s_stack[0])))
+                s_stack[s_stack_n++] = s_screen;
+        }
+        s_screen = UI_SCREEN_PLAYER;
+        ui_draw_player();
+        return;
+    }
+
+    /* Global back — left side of header only (avoid stealing right-side taps) */
     if (s_screen != UI_SCREEN_HOME &&
-        hit_rect(tx, ty, BACK_X, BACK_Y, BACK_W, BACK_H, HIT_PAD)) {
+        tx < (BOARD_SCR_W / 2) &&
+        hit_rect(tx, ty, BACK_X, BACK_Y, BACK_W, BACK_H, 8)) {
         nav_back();
         ui_redraw_current();
         return;
@@ -680,26 +825,40 @@ void ui_handle_touch(void)
     }
 
     if (s_screen == UI_SCREEN_BT_DEVICES) {
-        if (bt_source_is_connected()) return;
-        int fy = footer_y();
-        int vis = (footer_y() - BT_LIST_Y) / ITEM_H;
+        /* Full power row — works even while connected */
+        if (ty >= BT_PWR_Y && ty < BT_PWR_Y + BT_PWR_H && tx >= 8 && tx < BOARD_SCR_W - 8) {
+            bool next = !bt_source_is_enabled();
+            ESP_LOGI(TAG, "BT power tap -> %s (tx=%d ty=%d)", next ? "ON" : "OFF", (int)tx, (int)ty);
+            s_bt_connecting = false;
+            s_bt_pick_scroll = 0;
+            bt_source_set_enabled(next);
+            ui_draw_bt_devices();
+            return;
+        }
+
+        if (!bt_source_is_enabled() || bt_source_is_connected())
+            return;
+
+        int vis = (footer_y() - BT_LIST_Y) / BT_ITEM_H;
         if (vis < 1) vis = 1;
         int n = bt_source_scan_count();
 
-        if (ty >= fy && tx <= 80) {
+        if (footer_hit_prev(tx, ty)) {
             s_bt_pick_scroll -= vis;
             if (s_bt_pick_scroll < 0) s_bt_pick_scroll = 0;
+            ESP_LOGI(TAG, "BT footer PREV");
             ui_draw_bt_devices();
             return;
         }
-        if (ty >= fy && tx >= 160) {
+        if (footer_hit_next(tx, ty)) {
             if (s_bt_pick_scroll + vis < n) s_bt_pick_scroll += vis;
+            ESP_LOGI(TAG, "BT footer NEXT");
             ui_draw_bt_devices();
             return;
         }
-        int list_bottom = BT_LIST_Y + vis * ITEM_H;
+        int list_bottom = BT_LIST_Y + vis * BT_ITEM_H;
         if (ty < BT_LIST_Y || ty >= list_bottom) return;
-        int row = (ty - BT_LIST_Y) / ITEM_H;
+        int row = (ty - BT_LIST_Y) / BT_ITEM_H;
         int idx = s_bt_pick_scroll + row;
         bt_scan_entry_t e;
         if (!bt_source_scan_get(idx, &e)) return;
@@ -711,26 +870,22 @@ void ui_handle_touch(void)
     }
 
     if (s_screen == UI_SCREEN_BROWSER) {
-        if (s_browse_level == BROWSE_TRACKS && ty < HEADER_H && tx >= 64 && tx < 150) {
+        /* NOW already handled above (before Back) */
+
+        if (s_browse_level == BROWSE_TRACKS &&
+            ty < HEADER_H && tx < (BOARD_SCR_W / 2) && tx >= 56) {
             s_browse_level = BROWSE_ALBUMS;
             s_track_scroll = 0;
             ui_draw_browser();
             return;
         }
-        if ((audio_state() == PLAYER_PLAYING || audio_state() == PLAYER_PAUSED) &&
-            ty < HEADER_H && tx >= 160) {
-            nav_goto(UI_SCREEN_PLAYER);
-            ui_draw_player();
-            return;
-        }
 
-        int fy = footer_y();
         int vis = visible_slots();
         int item_count = (s_browse_level == BROWSE_ALBUMS)
                              ? sd_music_album_count()
                              : sd_music_browse_track_count();
 
-        if (ty >= fy && tx <= 80) {
+        if (footer_hit_prev(tx, ty)) {
             if (s_browse_level == BROWSE_ALBUMS) {
                 s_album_scroll -= vis;
                 if (s_album_scroll < 0) s_album_scroll = 0;
@@ -738,22 +893,27 @@ void ui_handle_touch(void)
                 s_track_scroll -= vis;
                 if (s_track_scroll < 0) s_track_scroll = 0;
             }
+            ESP_LOGI(TAG, "Browser footer PREV scroll=%d",
+                     s_browse_level == BROWSE_ALBUMS ? s_album_scroll : s_track_scroll);
             ui_draw_browser();
             return;
         }
-        if (ty >= fy && tx >= 160) {
+        if (footer_hit_next(tx, ty)) {
             if (s_browse_level == BROWSE_ALBUMS) {
                 if (s_album_scroll + vis < item_count) s_album_scroll += vis;
             } else {
                 if (s_track_scroll + vis < item_count) s_track_scroll += vis;
             }
+            ESP_LOGI(TAG, "Browser footer NEXT scroll=%d",
+                     s_browse_level == BROWSE_ALBUMS ? s_album_scroll : s_track_scroll);
             ui_draw_browser();
             return;
         }
 
-        int list_bottom = LIST_Y + vis * ITEM_H;
-        if (ty < LIST_Y || ty >= list_bottom) return;
-        int row = (ty - LIST_Y) / ITEM_H;
+        const int list_y = browser_list_y();
+        int list_bottom = list_y + vis * ITEM_H;
+        if (ty < list_y || ty >= list_bottom) return;
+        int row = (ty - list_y) / ITEM_H;
         int scroll = (s_browse_level == BROWSE_ALBUMS) ? s_album_scroll : s_track_scroll;
         int idx = scroll + row;
         if (idx < 0 || idx >= item_count) return;
@@ -787,23 +947,24 @@ void ui_handle_touch(void)
         return;
     }
 
-    if (ty >= PL_CTRL_Y - 4 && ty < PL_VOL_Y) {
-        if (tx < 50) {
-            audio_toggle_shuffle();
-            draw_transport();
-        } else if (tx < 100) {
+    if (ty >= TR_PLAY_Y0 && ty < TR_PLAY_Y1) {
+        ESP_LOGI(TAG, "PLAY tap (%d,%d)", (int)tx, (int)ty);
+        audio_toggle_pause();
+        draw_transport();
+        ui_draw_player_progress();
+        return;
+    }
+
+    if (ty >= TR_ROW2_Y0 && ty < TR_ROW2_Y1) {
+        if (tx < TR_MID_X) {
+            ESP_LOGI(TAG, "PREV tap (%d,%d)", (int)tx, (int)ty);
             audio_prev();
             ui_draw_player();
-        } else if (tx < 145) {
-            audio_toggle_pause();
-            draw_transport();
-            ui_draw_player_progress();
-        } else if (tx < 190) {
+        } else {
+            ESP_LOGI(TAG, "NEXT tap (%d,%d)", (int)tx, (int)ty);
             audio_next(false);
             ui_draw_player();
-        } else {
-            audio_cycle_repeat();
-            draw_transport();
         }
+        return;
     }
 }
