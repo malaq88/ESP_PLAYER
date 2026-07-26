@@ -363,10 +363,12 @@ static void ili9341_init_seq(void)
     tft_cmd(0x11); // SLPOUT
     vTaskDelay(pdMS_TO_TICKS(120));
 
-    tft_cmd(0x3A); tft_data8(0x55); // 16-bit
-    tft_cmd(0x36); tft_data8(0x48); // MX + BGR — portrait-ish for many CYDs
-    /* MADCTL: try portrait 240x320. Common CYD rotation 0 uses 0x08/0x48. */
-    tft_cmd(0x36); tft_data8(0x08);
+    tft_cmd(0x3A); tft_data8(0x55); // 16-bit color
+    /*
+     * MADCTL: portrait 240x320, RGB order (not BGR).
+     * 0x08 enables BGR and swaps R/B — yellow would look blue.
+     */
+    tft_cmd(0x36); tft_data8(0x00);
 
     tft_cmd(0xB1); tft_data8(0x00); tft_data8(0x18);
     tft_cmd(0xB6); tft_data8(0x08); tft_data8(0x82); tft_data8(0x27);
