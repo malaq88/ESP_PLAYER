@@ -74,70 +74,39 @@ void rgb_led_update(bool bt_enabled, bool bt_connected, bool playing)
     rgb_all_off();
 }
 
-/* ── Backlight + BOOT (power button) ─────────────────────── */
+/* ── Backlight idle lock / touch wake ────────────────────── */
 
 static int64_t s_last_activity_ms;
-static uint8_t s_boot_phase;
-static int64_t s_boot_ms;
 static bool s_ui_ready;
 static bool s_wake_redraw;
 static TaskHandle_t s_power_task;
-
-static void boot_gpio_init(void)
-{
-    /* GPIO0 is a strapping/RTC pin — reset before use as BOOT input */
-    gpio_reset_pin((gpio_num_t)PIN_BOOT_BTN);
-    gpio_config_t io = {};
-    io.mode = GPIO_MODE_INPUT;
-    io.pull_up_en = GPIO_PULLUP_ENABLE;
-    io.pull_down_en = GPIO_PULLDOWN_DISABLE;
-    io.intr_type = GPIO_INTR_DISABLE;
-    io.pin_bit_mask = (1ULL << PIN_BOOT_BTN);
-    gpio_config(&io);
-}
 
 static void bl_apply(bool on)
 {
     display_set_backlight(on);
 }
 
-static void toggle_bl(void)
-{
-    if (display_backlight_on()) {
-        bl_apply(false);
-        ESP_LOGI(TAG, "BOOT: display OFF");
-    } else {
-        bl_apply(true);
-        s_last_activity_ms = ms_now();
-        if (s_ui_ready) s_wake_redraw = true;
-        ESP_LOGI(TAG, "BOOT: display ON");
-    }
-}
-
-static void power_button_task(void *arg)
+static void power_idle_task(void *arg)
 {
     (void)arg;
     for (;;) {
         power_poll();
-        vTaskDelay(pdMS_TO_TICKS(5));
+        vTaskDelay(pdMS_TO_TICKS(50));
     }
 }
 
 void power_init(void)
 {
-    boot_gpio_init();
     s_last_activity_ms = ms_now();
-    s_boot_phase = 0;
     s_ui_ready = false;
     s_wake_redraw = false;
 
-    /* Dedicated poll — UI draw must never starve the power button */
     xTaskCreatePinnedToCore(
-        power_button_task,
-        "pwr_btn",
-        3072,
+        power_idle_task,
+        "pwr_idle",
+        2048,
         NULL,
-        10,
+        5,
         &s_power_task,
         0);
 }
@@ -151,6 +120,15 @@ void power_note_activity(void)
 bool power_backlight_on(void)
 {
     return display_backlight_on();
+}
+
+void power_wake_display(void)
+{
+    if (display_backlight_on()) return;
+    bl_apply(true);
+    s_last_activity_ms = ms_now();
+    if (s_ui_ready) s_wake_redraw = true;
+    ESP_LOGI(TAG, "Touch wake: display ON");
 }
 
 void power_set_ui_ready(bool ready)
@@ -168,27 +146,9 @@ bool power_consume_wake_redraw(void)
 void power_poll(void)
 {
     int64_t now = ms_now();
-    bool down = (gpio_get_level((gpio_num_t)PIN_BOOT_BTN) == 0);
-
-    /* Debounced press → toggle once; wait for release (phone power button) */
-    if (s_boot_phase == 0) {
-        if (down) {
-            s_boot_phase = 1;
-            s_boot_ms = now;
-        }
-    } else if (s_boot_phase == 1) {
-        if (!down) {
-            s_boot_phase = 0;
-        } else if (now - s_boot_ms >= 40) {
-            toggle_bl();
-            s_boot_phase = 2;
-        }
-    } else { /* 2: latched until release */
-        if (!down) s_boot_phase = 0;
-    }
 
     if (display_backlight_on() && (now - s_last_activity_ms >= DISPLAY_IDLE_OFF_MS)) {
         bl_apply(false);
-        ESP_LOGI(TAG, "Idle timeout: display OFF");
+        ESP_LOGI(TAG, "Idle timeout: display locked");
     }
 }

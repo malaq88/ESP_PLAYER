@@ -8,6 +8,38 @@ Tema visual: **preto + amarelo** (combinando com o case do CYD).
 
 ---
 
+## Capturas de tela
+
+### START — splash de boot
+
+![START — splash de boot](START.jpeg)
+
+### MENU_CONFIG — Home
+
+![MENU_CONFIG — Home](MENU_CONFIG.jpeg)
+
+### ALBUNS — lista de álbuns
+
+![ALBUNS — lista de álbuns](ALBUNS.jpeg)
+
+### PLAYSLIST — lista de faixas
+
+![PLAYSLIST — lista de faixas](PLAYSLIST.jpeg)
+
+### PLAYER — tela do player
+
+![PLAYER — tela do player](PLAYER.jpeg)
+
+### BLUETOOTH OFF — Bluetooth desligado
+
+![BLUETOOTH OFF — Bluetooth desligado](BLUETOOTH%20OFF.jpeg)
+
+### BLUETOOTH ON — Bluetooth ligado
+
+![BLUETOOTH ON — Bluetooth ligado](BLUETOOTH%20ON.jpeg)
+
+---
+
 ## Visão geral
 
 - Player de álbuns a partir de microSD (`.mp3` / `.wav`)
@@ -31,7 +63,7 @@ Mapa de pinos (`main/board.h`):
 | SD MOSI / MISO / SCLK / CS (SPI3) | 23 / 19 / 18 / 5 |
 | Touch CLK / MISO / MOSI / CS / IRQ | 25 / 39 / 32 / 33 / 36 |
 | Speaker DAC (amp SPEAK/P4) | **26** |
-| BOOT (power backlight) | 0 |
+| BOOT (GPIO0, opcional) | 0 |
 | RGB R / G / B (active LOW) | 4 / 16 / 17 |
 
 **Alto-falante:** conectar no conector **SPEAK** (JST). O áudio local usa o **DAC interno do ESP32** no GPIO 26 — não é I2S.
@@ -44,7 +76,7 @@ Mapa de pinos (`main/board.h`):
 
 1. Inicializa NVS, LED RGB, power/backlight, touch, decoder e saída local (DAC).
 2. Monta o cartão SD (FAT32). Falha → tela de erro.
-3. Splash e inicia **A2DP Source** em background (não bloqueia a Home).
+3. Splash ([START](START.jpeg)) e inicia **A2DP Source** em background (não bloqueia a Home).
 4. Escaneia faixas, monta álbuns e abre a **Home**.
 
 A música **não** exige Bluetooth. Sem fone, toca no speaker local.
@@ -57,12 +89,13 @@ Home
  └─ Bluetooth ──────► BT Devices (lista / conectar)
 ```
 
-| Tela | Descrição |
-|------|-----------|
-| **Home** | Cards Music e Bluetooth |
-| **Browser** | Pastas = álbuns; lista de faixas; Back; barra Now playing |
-| **Player** | Espectro, seek, volume, transport |
-| **BT Devices** | Liga/desliga BT; scan/lista Classic; escolher fone |
+| Tela | Descrição | Captura |
+|------|-----------|---------|
+| **Home** | Cards Music e Bluetooth | [MENU_CONFIG](MENU_CONFIG.jpeg) |
+| **Browser (álbuns)** | Pastas = álbuns; Back | [ALBUNS](ALBUNS.jpeg) |
+| **Browser (faixas)** | Lista de faixas; barra Now playing | [PLAYSLIST](PLAYSLIST.jpeg) |
+| **Player** | Espectro, seek, volume, transport | [PLAYER](PLAYER.jpeg) |
+| **BT Devices** | Liga/desliga BT; scan/lista Classic | [BLUETOOTH OFF](BLUETOOTH%20OFF.jpeg) / [BLUETOOTH ON](BLUETOOTH%20ON.jpeg) |
 
 Navegação com stack de **Back** (volta à tela anterior).
 
@@ -115,7 +148,7 @@ Limites (`sd_music.h`):
 ### Energia
 
 - Backlight desliga após **30 s** sem toque (`DISPLAY_IDLE_OFF_MS`); a música continua.
-- Botão **BOOT** (GPIO 0): liga/desliga backlight (música continua).
+- **Toque na tela** para desbloquear o display após o timeout.
 - LED RGB: indica estado BT / reprodução (active LOW).
 
 ---
@@ -129,7 +162,7 @@ main/
   theme.h           — cores (preto + amarelo)
   display.*         — ILI9341
   touch.*           — XPT2046 bitbang
-  power.*           — backlight, BOOT, idle
+  power.*           — backlight, idle lock, touch wake
   sd_music.*        — FAT + scan álbuns/faixas
   audio_player.*    — decode MP3/WAV, ring, volume, playlist
   audio_local.*     — DAC GPIO26 quando sem BT

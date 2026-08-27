@@ -20,6 +20,8 @@ void power_init(void);
 void power_note_activity(void);
 void power_poll(void);
 bool power_backlight_on(void);
+/** Turn backlight on after idle lock (touch wake). */
+void power_wake_display(void);
 bool power_consume_wake_redraw(void);
 void power_set_ui_ready(bool ready);
 

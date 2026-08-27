@@ -747,7 +747,18 @@ void ui_tick_progress(void)
 
 void ui_handle_touch(void)
 {
-    if (!power_backlight_on()) return;
+    if (!power_backlight_on()) {
+        int16_t tx, ty;
+        if (!touch_read(&tx, &ty)) return;
+        power_wake_display();
+        /* Wake touch only unlocks — wait for finger release before UI input */
+        for (int i = 0; i < 80; i++) {
+            if (!touch_read(&tx, &ty)) break;
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
+        return;
+    }
+
     int16_t tx, ty;
     /* Stable tap: average/median while pressed — not the noisy first contact */
     if (!touch_read_tap(&tx, &ty)) return;

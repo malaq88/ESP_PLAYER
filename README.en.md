@@ -8,6 +8,38 @@ Visual theme: **black + yellow** (matches the CYD case).
 
 ---
 
+## Screenshots
+
+### START — boot splash
+
+![START — boot splash](START.jpeg)
+
+### MENU_CONFIG — Home
+
+![MENU_CONFIG — Home](MENU_CONFIG.jpeg)
+
+### ALBUNS — album list
+
+![ALBUNS — album list](ALBUNS.jpeg)
+
+### PLAYSLIST — track list
+
+![PLAYSLIST — track list](PLAYSLIST.jpeg)
+
+### PLAYER — player screen
+
+![PLAYER — player screen](PLAYER.jpeg)
+
+### BLUETOOTH OFF — Bluetooth off
+
+![BLUETOOTH OFF — Bluetooth off](BLUETOOTH%20OFF.jpeg)
+
+### BLUETOOTH ON — Bluetooth on
+
+![BLUETOOTH ON — Bluetooth on](BLUETOOTH%20ON.jpeg)
+
+---
+
 ## Overview
 
 - Album player from microSD (`.mp3` / `.wav`)
@@ -31,7 +63,7 @@ Pin map (`main/board.h`):
 | SD MOSI / MISO / SCLK / CS (SPI3) | 23 / 19 / 18 / 5 |
 | Touch CLK / MISO / MOSI / CS / IRQ | 25 / 39 / 32 / 33 / 36 |
 | Speaker DAC (amp SPEAK/P4) | **26** |
-| BOOT (power backlight) | 0 |
+| BOOT (GPIO0, optional) | 0 |
 | RGB R / G / B (active LOW) | 4 / 16 / 17 |
 
 **Speaker:** plug into the **SPEAK** connector (JST). Local audio uses the ESP32 **internal DAC** on GPIO 26 — not I2S.
@@ -44,7 +76,7 @@ Pin map (`main/board.h`):
 
 1. Initializes NVS, RGB LED, power/backlight, touch, decoder and local DAC output.
 2. Mounts the SD card (FAT32). Failure → error screen.
-3. Splash and starts **A2DP Source** in the background (Home is not blocked).
+3. Splash ([START](START.jpeg)) and starts **A2DP Source** in the background (Home is not blocked).
 4. Scans tracks, builds albums and opens **Home**.
 
 Music does **not** require Bluetooth. Without a headset, it plays on the local speaker.
@@ -57,12 +89,13 @@ Home
  └─ Bluetooth ──────► BT Devices (list / connect)
 ```
 
-| Screen | Description |
-|--------|-------------|
-| **Home** | Music and Bluetooth cards |
-| **Browser** | Folders = albums; track list; Back; Now playing bar |
-| **Player** | Spectrum, seek, volume, transport |
-| **BT Devices** | BT on/off; Classic scan/list; pick a headset |
+| Screen | Description | Screenshot |
+|--------|-------------|------------|
+| **Home** | Music and Bluetooth cards | [MENU_CONFIG](MENU_CONFIG.jpeg) |
+| **Browser (albums)** | Folders = albums; Back | [ALBUNS](ALBUNS.jpeg) |
+| **Browser (tracks)** | Track list; Now playing bar | [PLAYSLIST](PLAYSLIST.jpeg) |
+| **Player** | Spectrum, seek, volume, transport | [PLAYER](PLAYER.jpeg) |
+| **BT Devices** | BT on/off; Classic scan/list | [BLUETOOTH OFF](BLUETOOTH%20OFF.jpeg) / [BLUETOOTH ON](BLUETOOTH%20ON.jpeg) |
 
 Navigation uses a **Back** stack (returns to the previous screen).
 
@@ -115,7 +148,7 @@ Limits (`sd_music.h`):
 ### Power
 
 - Backlight turns off after **30 s** idle (`DISPLAY_IDLE_OFF_MS`); music keeps playing.
-- **BOOT** button (GPIO 0): toggles backlight (music continues).
+- **Touch the screen** to unlock the display after the timeout.
 - RGB LED: reflects BT / playback state (active LOW).
 
 ---
@@ -129,7 +162,7 @@ main/
   theme.h           — colors (black + yellow)
   display.*         — ILI9341
   touch.*           — XPT2046 bitbang
-  power.*           — backlight, BOOT, idle
+  power.*           — backlight, idle lock, touch wake
   sd_music.*        — FAT + album/track scan
   audio_player.*    — MP3/WAV decode, ring, volume, playlist
   audio_local.*     — DAC GPIO26 when BT is off

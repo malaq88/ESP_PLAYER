@@ -28,7 +28,7 @@
 #define PIN_TOUCH_CS          33
 #define PIN_TOUCH_IRQ         36
 
-/* BOOT button — active LOW; also ESP32 strapping pin */
+/* BOOT button (GPIO0) — unused when case blocks access; wake via touch */
 #define PIN_BOOT_BTN          0
 
 /* Rear RGB LED — active LOW */
