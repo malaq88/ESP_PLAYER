@@ -44,9 +44,9 @@ static int64_t s_last_route_ms;
 static const int HEADER_H = 44;
 static const int LIST_Y_BASE = HEADER_H + 12;
 static const int FOOTER_H = 58;
-static const int ITEM_H = 38;
 
 static const int BACK_X = 4, BACK_Y = 3, BACK_W = 104, BACK_H = 38;
+static const int ITEM_H = BACK_H;
 
 /* Full-width NOW bar under header — Y-only hit (reliable on CYD) */
 static const int NOW_BAR_Y0 = HEADER_H;
@@ -177,9 +177,10 @@ static void draw_corner_brackets(int x, int y, int w, int h, int len, uint16_t c
     display_draw_vline(x + w - 1, y + h - len, len, c);
 }
 
-static void draw_neon_panel(int x, int y, int w, int h, int r)
+static void draw_neon_panel(int x, int y, int w, int h, int r,
+                            uint16_t fill = theme::SURFACE)
 {
-    display_fill_round_rect(x, y, w, h, r, theme::SURFACE);
+    display_fill_round_rect(x, y, w, h, r, fill);
     display_draw_rect(x, y, w, h, theme::ACCENT_DIM);
     draw_corner_brackets(x + 2, y + 2, w - 4, h - 4, 7, theme::ACCENT);
 }
@@ -272,17 +273,14 @@ static bool footer_hit_next(int16_t tx, int16_t ty)
     return ty >= footer_y() && tx >= (BOARD_SCR_W / 2);
 }
 
-static void draw_list_row(int y, const char *label, bool playing)
+static void draw_list_row(int y, const char *label, bool playing, bool alternate)
 {
+    const uint16_t row_bg = playing || alternate ? theme::SURFACE2 : theme::SURFACE;
+    draw_neon_panel(6, y + 2, BOARD_SCR_W - 12, ITEM_H - 4, 6, row_bg);
     if (playing) {
-        display_fill_rect(6, y + 2, BOARD_SCR_W - 12, ITEM_H - 4, theme::SURFACE);
         display_fill_rect(6, y + 2, 3, ITEM_H - 4, theme::ACCENT2);
-        display_draw_rect(6, y + 2, BOARD_SCR_W - 12, ITEM_H - 4, theme::ACCENT_DIM);
-        display_draw_text(16, y + 15, label, theme::ACCENT, theme::SURFACE, 1);
-    } else {
-        display_fill_rect(0, y, BOARD_SCR_W, ITEM_H, theme::BG);
-        display_draw_text(14, y + 15, label, theme::TEXT, theme::BG, 1);
     }
+    display_draw_text(14, y + 15, label, playing ? theme::ACCENT : theme::TEXT, row_bg, 1);
     display_draw_hline(12, y + ITEM_H - 1, BOARD_SCR_W - 24, theme::DIVIDER);
 }
 
@@ -419,7 +417,7 @@ static const int BT_TOGGLE_X = 162;
 static const int BT_TOGGLE_W = 66;
 static const int BT_TOGGLE_H = 30;
 static const int BT_LIST_Y = 100;
-static const int BT_ITEM_H = 56;
+static const int BT_ITEM_H = BACK_H;
 
 static void draw_bt_toggle(bool on)
 {
@@ -500,13 +498,15 @@ void ui_draw_bt_devices(void)
         bt_scan_entry_t e;
         if (!bt_source_scan_get(idx, &e)) break;
         int y = BT_LIST_Y + row * BT_ITEM_H;
-        draw_neon_panel(8, y + 2, BOARD_SCR_W - 16, BT_ITEM_H - 4, 6);
+        draw_neon_panel(8, y + 2, BOARD_SCR_W - 16, BT_ITEM_H - 4, 6,
+                        (row & 1) ? theme::SURFACE2 : theme::SURFACE);
         display_fill_circle(28, y + BT_ITEM_H / 2, 9, theme::SURFACE2);
         display_fill_circle(28, y + BT_ITEM_H / 2, 5, theme::ICON_BT);
         char line[40];
         truncate_str(line, sizeof(line), e.name, 24);
-        display_draw_text(48, y + 15, line, theme::TEXT, theme::SURFACE, 1);
-        display_draw_text(48, y + 33, "Tap to connect", theme::MUTED, theme::SURFACE, 1);
+        uint16_t row_bg = (row & 1) ? theme::SURFACE2 : theme::SURFACE;
+        display_draw_text(48, y + 7, line, theme::TEXT, row_bg, 1);
+        display_draw_text(48, y + 22, "Tap to connect", theme::MUTED, row_bg, 1);
     }
     draw_nav_footer(page, total_pages);
     s_last_bt_count = n;
@@ -574,7 +574,7 @@ void ui_draw_browser(void)
             truncate_str(name, sizeof(name), name, 28);
             playing = (pi == audio_current_track() && music_is_active());
         }
-        draw_list_row(y, name, playing);
+        draw_list_row(y, name, playing, (idx & 1) != 0);
     }
     draw_nav_footer(page, total_pages);
 }
