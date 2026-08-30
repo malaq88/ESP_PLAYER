@@ -158,10 +158,20 @@ static void draw_chrome_panel(int x, int y, int w, int h)
     display_fill_round_rect(x, y, w, h, 10, theme::SURFACE);
 }
 
+static void draw_compact_btn(int x, int y, const char *label)
+{
+    display_fill_round_rect(x, y, BACK_W, BACK_H, 5, theme::SURFACE2);
+    display_draw_rect(x, y, BACK_W, BACK_H, theme::ACCENT_DIM);
+
+    const int tw = display_text_width(label, 1);
+    const int tx = x + (BACK_W - tw) / 2;
+    const int ty = y + (BACK_H - 8) / 2;
+    display_draw_text(tx, ty, label, theme::TEXT, theme::SURFACE2, 1);
+}
+
 static void draw_back_btn(void)
 {
-    display_fill_round_rect(BACK_X, BACK_Y, BACK_W, BACK_H, 6, theme::SURFACE2);
-    display_draw_text(BACK_X + 8, BACK_Y + 7, "< Back", theme::TEXT, theme::SURFACE2, 1);
+    draw_compact_btn(BACK_X, BACK_Y, "< BACK");
 }
 
 static void draw_now_btn(void)
@@ -198,22 +208,14 @@ static void draw_nav_footer(int page, int total_pages)
     display_fill_rect(0, fy, BOARD_SCR_W, FOOTER_H, theme::BG);
     display_draw_hline(0, fy, BOARD_SCR_W, theme::DIVIDER);
 
-    const int gap = 6;
-    const int btn_y = fy + 4;
-    const int btn_h = FOOTER_H - 8;
-    const int btn_w = (BOARD_SCR_W - 16 - gap) / 2;
+    const int btn_y = fy + (FOOTER_H - BACK_H) / 2;
+    const int next_x = BOARD_SCR_W - 8 - BACK_W;
 
-    display_fill_round_rect(8, btn_y, btn_w, btn_h, 8, theme::SURFACE);
-    display_draw_text(8 + 10, btn_y + btn_h / 2 - 4, "< PREV", theme::TEXT, theme::SURFACE, 1);
-
-    const int next_x = 8 + btn_w + gap;
-    display_fill_round_rect(next_x, btn_y, btn_w, btn_h, 8, theme::SURFACE);
-    {
-        const char *next_lbl = "NEXT >";
-        int ntw = display_text_width(next_lbl, 1);
-        display_draw_text(next_x + btn_w - ntw - 10, btn_y + btn_h / 2 - 4,
-                          next_lbl, theme::TEXT, theme::SURFACE, 1);
-    }
+    /* Navigation buttons use the same compact chrome and dimensions as Back.
+     * Keep the hit zones below broad: the visible button is small, but a
+     * resistive panel is easier to use when the whole half of the footer reacts. */
+    draw_compact_btn(8, btn_y, "< PREV");
+    draw_compact_btn(next_x, btn_y, "NEXT >");
 
     char pg[16];
     snprintf(pg, sizeof(pg), "%d/%d", page, total_pages < 1 ? 1 : total_pages);
