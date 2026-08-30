@@ -21,7 +21,6 @@ static const char *TAG = "audio_local";
 static dac_continuous_handle_t s_dac;
 static uint32_t s_dac_hz;
 static bool s_dac_on;
-static volatile bool s_local_active;
 
 static int32_t soft_clip16(int32_t x)
 {
@@ -100,7 +99,6 @@ static void local_out_task(void *arg)
             if (was_local) {
                 dac_silence_and_idle();
                 was_local = false;
-                s_local_active = false;
                 ESP_LOGI(TAG, "Speaker idle (BT=%d state=%d)",
                          (int)bt_source_is_connected(), (int)audio_state());
             }
@@ -132,7 +130,6 @@ static void local_out_task(void *arg)
             vTaskDelay(pdMS_TO_TICKS(5));
         }
         was_local = true;
-        s_local_active = true;
     }
 }
 
@@ -143,14 +140,8 @@ audio_route_t audio_output_route(void)
     return AUDIO_ROUTE_SPEAKER;
 }
 
-bool audio_local_is_active(void)
-{
-    return s_local_active;
-}
-
 void audio_local_init(void)
 {
-    s_local_active = false;
     if (dac_open(LOCAL_DEFAULT_HZ) != ESP_OK) {
         ESP_LOGE(TAG, "Local speaker unavailable");
         return;

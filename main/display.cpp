@@ -4,7 +4,6 @@
 
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
-#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -352,9 +351,6 @@ void display_push_image(int x, int y, int w, int h, const uint16_t *data)
     write_pixels(data, (size_t)w * (size_t)h);
     unlock_spi();
 }
-
-void display_bus_lock(void) { lock_spi(); }
-void display_bus_unlock(void) { unlock_spi(); }
 
 static void ili9341_init_seq(void)
 {

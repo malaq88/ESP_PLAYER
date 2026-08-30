@@ -3,10 +3,8 @@
 
 #include "BluetoothA2DPSource.h"
 #include "esp_log.h"
-#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/portmacro.h"
-#include "freertos/task.h"
 
 #include <string.h>
 
@@ -128,11 +126,6 @@ bool bt_source_is_enabled(void)
     return s_enabled;
 }
 
-bool bt_source_is_busy(void)
-{
-    return false; /* soft toggle is instant */
-}
-
 void bt_source_set_enabled(bool enabled)
 {
     if (enabled == s_enabled) {
@@ -219,50 +212,4 @@ void bt_source_choose(const uint8_t addr[6], const char *name)
         strncpy(s_peer, name, sizeof(s_peer) - 1);
         s_peer[sizeof(s_peer) - 1] = '\0';
     }
-}
-
-void bt_source_run_picker(bt_picker_draw_fn draw, bt_picker_tick_fn tick)
-{
-    const int64_t show_after_ms = 2000;
-    int64_t t0 = esp_timer_get_time() / 1000;
-    bool showed = false;
-    int last_snap = -1;
-    bool connecting = false;
-
-    s_user_choice = false;
-
-    while (!s_a2dp.is_connected()) {
-        if (tick) tick();
-
-        int64_t now = esp_timer_get_time() / 1000;
-        if (!showed && (now - t0 > show_after_ms)) {
-            if (draw) draw(false);
-            showed = true;
-            last_snap = bt_source_scan_count();
-        }
-
-        if (showed) {
-            int snap = bt_source_scan_count();
-            if (s_user_choice && !connecting) {
-                if (draw) draw(true);
-                connecting = true;
-                last_snap = snap;
-            } else if (!connecting && snap != last_snap) {
-                if (draw) draw(false);
-                last_snap = snap;
-            }
-        }
-        vTaskDelay(pdMS_TO_TICKS(15));
-    }
-
-    if (!s_peer[0]) {
-        const char *n = s_a2dp.get_name();
-        if (n && n[0]) {
-            strncpy(s_peer, n, sizeof(s_peer) - 1);
-            s_peer[sizeof(s_peer) - 1] = '\0';
-        } else {
-            strncpy(s_peer, "BT", sizeof(s_peer) - 1);
-        }
-    }
-    ESP_LOGI(TAG, "Connected to %s", s_peer);
 }

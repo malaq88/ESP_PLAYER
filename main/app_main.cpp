@@ -7,7 +7,6 @@
 #include "audio_local.h"
 #include "bt_source.h"
 #include "ui.h"
-#include "theme.h"
 
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"

@@ -1,7 +1,5 @@
 #pragma once
 
-#include <stdbool.h>
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -18,9 +16,6 @@ void audio_local_init(void);
 
 /** Active output path: BT wins whenever connected; otherwise speaker. */
 audio_route_t audio_output_route(void);
-
-/** True while the DAC task is actively driving the amp. */
-bool audio_local_is_active(void);
 
 #ifdef __cplusplus
 }

@@ -28,10 +28,6 @@ void display_draw_text_centered(int y, int max_w, const char *s, uint16_t fg, ui
 
 void display_push_image(int x, int y, int w, int h, const uint16_t *data);
 
-/* Shared SPI mutex for TFT bus only (SD uses a separate SPI host). */
-void display_bus_lock(void);
-void display_bus_unlock(void);
-
 #ifdef __cplusplus
 }
 #endif

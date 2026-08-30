@@ -121,7 +121,7 @@ bool sd_music_init(void)
         /* Free leftover bus from a previous failed attempt / crash reboot */
         spi_bus_free(SPI3_HOST);
 
-        esp_err_t ret = spi_bus_initialize(host.slot, &buscfg, SPI_DMA_CH_AUTO);
+        esp_err_t ret = spi_bus_initialize(SPI3_HOST, &buscfg, SPI_DMA_CH_AUTO);
         if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
             ESP_LOGW(TAG, "SD SPI init attempt %d: %s", attempt, esp_err_to_name(ret));
             vTaskDelay(pdMS_TO_TICKS(200));
@@ -220,8 +220,7 @@ void sd_music_build_albums(void)
             }
         }
         if (!exists) {
-            strncpy(s_albums[s_album_count], candidate, MAX_ALBUM_NAME_LEN - 1);
-            s_albums[s_album_count][MAX_ALBUM_NAME_LEN - 1] = '\0';
+            snprintf(s_albums[s_album_count], MAX_ALBUM_NAME_LEN, "%s", candidate);
             s_album_count++;
         }
     }

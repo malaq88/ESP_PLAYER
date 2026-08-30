@@ -35,29 +35,28 @@ static int s_bt_pick_scroll;
 static int s_last_bt_count = -1;
 static bool s_bt_connecting;
 static bool s_last_bt_enabled = true;
-static bool s_last_bt_busy = false;
 static int s_last_bar_h[NUM_VIS_BARS];
 static bool s_vis_valid;
 static audio_route_t s_last_route = AUDIO_ROUTE_NONE;
 static int64_t s_last_route_ms;
 
 /* Layout */
-static const int HEADER_H = 28;
-static const int LIST_Y_BASE = 40;
-static const int FOOTER_H = 44;
-static const int ITEM_H = 28;
+static const int HEADER_H = 44;
+static const int LIST_Y_BASE = HEADER_H + 12;
+static const int FOOTER_H = 58;
+static const int ITEM_H = 38;
 
-static const int BACK_X = 4, BACK_Y = 4, BACK_W = 52, BACK_H = 22;
+static const int BACK_X = 4, BACK_Y = 3, BACK_W = 104, BACK_H = 38;
 
 /* Full-width NOW bar under header — Y-only hit (reliable on CYD) */
-static const int NOW_BAR_Y0 = 28;
+static const int NOW_BAR_Y0 = HEADER_H;
 static const int NOW_BAR_H = 34;
 
 /* Player layout */
-static const int PL_TITLE_Y = 34;
-static const int PL_SPEC_Y = 66;
+static const int PL_TITLE_Y = 46;
+static const int PL_SPEC_Y = 78;
 static const int PL_SPEC_H = 52;
-static const int PL_SEEK_Y = 132;
+static const int PL_SEEK_Y = 144;
 static const int PL_VOL_Y = 280;
 
 /* Transport hit zones (keep Y-based play — most reliable on CYD) */
@@ -121,10 +120,13 @@ static void format_ms(char *buf, size_t n, uint32_t sec)
 
 static void truncate_str(char *dst, size_t dst_n, const char *src, int max_chars)
 {
+    if (!dst || dst_n == 0) return;
     if (!src) src = "-";
-    strncpy(dst, src, dst_n - 1);
-    dst[dst_n - 1] = '\0';
-    if ((int)strlen(dst) > max_chars && max_chars > 2) {
+    size_t len = strlen(src);
+    if (len >= dst_n) len = dst_n - 1;
+    if (dst != src) memmove(dst, src, len);
+    dst[len] = '\0';
+    if ((int)len > max_chars && max_chars > 2) {
         dst[max_chars - 2] = '\0';
         strcat(dst, "..");
     }
@@ -191,20 +193,19 @@ static void draw_header_bar(const char *title, int h)
     display_draw_text(10, 8, title, theme::ACCENT, theme::SURFACE, 1);
 }
 
-static void draw_compact_btn(int x, int y, const char *label)
+static void draw_nav_btn(int x, int y, const char *label)
 {
-    display_fill_round_rect(x, y, BACK_W, BACK_H, 5, theme::SURFACE2);
-    display_draw_rect(x, y, BACK_W, BACK_H, theme::ACCENT_DIM);
+    draw_neon_panel(x, y, BACK_W, BACK_H, 8);
 
     const int tw = display_text_width(label, 1);
     const int tx = x + (BACK_W - tw) / 2;
     const int ty = y + (BACK_H - 8) / 2;
-    display_draw_text(tx, ty, label, theme::TEXT, theme::SURFACE2, 1);
+    display_draw_text(tx, ty, label, theme::ACCENT, theme::SURFACE, 1);
 }
 
 static void draw_back_btn(void)
 {
-    draw_compact_btn(BACK_X, BACK_Y, "< BACK");
+    draw_nav_btn(BACK_X, BACK_Y, "< BACK");
 }
 
 static void draw_now_btn(void)
@@ -245,13 +246,13 @@ static void draw_nav_footer(int page, int total_pages)
     display_draw_hline(0, fy + 1, BOARD_SCR_W, theme::DIVIDER);
 
     const int btn_y = fy + (FOOTER_H - BACK_H) / 2;
-    const int next_x = BOARD_SCR_W - 8 - BACK_W;
+    const int next_x = BOARD_SCR_W - 12 - BACK_W;
 
-    /* Navigation buttons use the same compact chrome and dimensions as Back.
-     * Keep the hit zones below broad: the visible button is small, but a
-     * resistive panel is easier to use when the whole half of the footer reacts. */
-    draw_compact_btn(8, btn_y, "< PREV");
-    draw_compact_btn(next_x, btn_y, "NEXT >");
+    /* Navigation buttons use the same enlarged chrome and dimensions as Back.
+     * Keep the hit zones broad: a resistive panel is easier to use when the
+     * whole half of the footer reacts. */
+    draw_nav_btn(8, btn_y, "< PREV");
+    draw_nav_btn(next_x, btn_y, "NEXT >");
 
     char pg[16];
     snprintf(pg, sizeof(pg), "%d/%d", page, total_pages < 1 ? 1 : total_pages);
@@ -277,10 +278,10 @@ static void draw_list_row(int y, const char *label, bool playing)
         display_fill_rect(6, y + 2, BOARD_SCR_W - 12, ITEM_H - 4, theme::SURFACE);
         display_fill_rect(6, y + 2, 3, ITEM_H - 4, theme::ACCENT2);
         display_draw_rect(6, y + 2, BOARD_SCR_W - 12, ITEM_H - 4, theme::ACCENT_DIM);
-        display_draw_text(16, y + 10, label, theme::ACCENT, theme::SURFACE, 1);
+        display_draw_text(16, y + 15, label, theme::ACCENT, theme::SURFACE, 1);
     } else {
         display_fill_rect(0, y, BOARD_SCR_W, ITEM_H, theme::BG);
-        display_draw_text(14, y + 10, label, theme::TEXT, theme::BG, 1);
+        display_draw_text(14, y + 15, label, theme::TEXT, theme::BG, 1);
     }
     display_draw_hline(12, y + ITEM_H - 1, BOARD_SCR_W - 24, theme::DIVIDER);
 }
@@ -418,7 +419,7 @@ static const int BT_TOGGLE_X = 162;
 static const int BT_TOGGLE_W = 66;
 static const int BT_TOGGLE_H = 30;
 static const int BT_LIST_Y = 100;
-static const int BT_ITEM_H = 44;
+static const int BT_ITEM_H = 56;
 
 static void draw_bt_toggle(bool on)
 {
@@ -439,16 +440,15 @@ static void draw_bt_toggle(bool on)
 void ui_draw_bt_devices(void)
 {
     draw_scan_bg();
-    display_fill_rect(0, 0, BOARD_SCR_W, 48, theme::SURFACE);
-    display_fill_rect(0, 0, 3, 48, theme::ICON_BT);
-    display_draw_hline(0, 47, BOARD_SCR_W, theme::ACCENT_DIM);
+    display_fill_rect(0, 0, BOARD_SCR_W, HEADER_H, theme::SURFACE);
+    display_fill_rect(0, 0, 3, HEADER_H, theme::ICON_BT);
+    display_draw_hline(0, HEADER_H - 1, BOARD_SCR_W, theme::ACCENT_DIM);
     draw_back_btn();
-    display_draw_text(64, 8, "// BLUETOOTH", theme::ICON_BT, theme::SURFACE, 1);
-    display_draw_text(64, 26, "pair a headset", theme::MUTED, theme::SURFACE, 1);
+    display_draw_text(120, 8, "// BLUETOOTH", theme::ICON_BT, theme::SURFACE, 1);
+    display_draw_text(120, 26, "pair a headset", theme::MUTED, theme::SURFACE, 1);
 
     const bool enabled = bt_source_is_enabled();
     s_last_bt_enabled = enabled;
-    s_last_bt_busy = false;
 
     draw_bt_toggle(enabled);
 
@@ -505,8 +505,8 @@ void ui_draw_bt_devices(void)
         display_fill_circle(28, y + BT_ITEM_H / 2, 5, theme::ICON_BT);
         char line[40];
         truncate_str(line, sizeof(line), e.name, 24);
-        display_draw_text(48, y + 10, line, theme::TEXT, theme::SURFACE, 1);
-        display_draw_text(48, y + 26, "Tap to connect", theme::MUTED, theme::SURFACE, 1);
+        display_draw_text(48, y + 15, line, theme::TEXT, theme::SURFACE, 1);
+        display_draw_text(48, y + 33, "Tap to connect", theme::MUTED, theme::SURFACE, 1);
     }
     draw_nav_footer(page, total_pages);
     s_last_bt_count = n;
@@ -546,7 +546,7 @@ void ui_draw_browser(void)
     draw_back_btn();
 
     const char *title = (s_browse_level == BROWSE_ALBUMS) ? "// ALBUMS" : "// TRACKS";
-    display_draw_text(64, 8, title, theme::ACCENT, theme::SURFACE, 1);
+    display_draw_text(120, 8, title, theme::ACCENT, theme::SURFACE, 1);
     display_draw_hline(0, HEADER_H - 1, BOARD_SCR_W, theme::ACCENT_DIM);
     draw_now_btn();
 
@@ -734,9 +734,9 @@ static void draw_transport(void)
     /* PREV | NEXT */
     {
         const int y = TR_ROW2_Y0 + 2;
-        const int h = TR_ROW2_Y1 - TR_ROW2_Y0 - 4;
         const int gap = 8;
-        const int w = (BOARD_SCR_W - 24 - gap) / 2;
+        const int w = BACK_W;
+        const int h = BACK_H;
 
         draw_neon_panel(12, y, w, h, 8);
         int pcx = 12 + w / 2;

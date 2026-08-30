@@ -98,8 +98,6 @@ static size_t rb_free(void)
     return AUDIO_RING_FRAMES - 1 - a;
 }
 
-size_t audio_ring_avail(void) { return rb_avail(); }
-
 static bool rb_push_sample(int16_t l, int16_t r)
 {
     size_t head = s_rb_head.load(std::memory_order_relaxed);
@@ -157,10 +155,8 @@ void audio_set_volume_percent(int pct)
 int audio_get_volume_percent(void) { return s_volume_pct; }
 
 player_state_t audio_state(void) { return s_state; }
-audio_type_t audio_type(void) { return s_type; }
 int audio_current_track(void) { return s_track; }
 uint32_t audio_duration_sec(void) { return s_duration_sec; }
-uint32_t audio_wav_rate_hz(void) { return s_cached_wav_rate; }
 const char *audio_current_album(void) { return s_album; }
 
 uint32_t audio_elapsed_sec(void)
@@ -363,9 +359,6 @@ void audio_cycle_repeat(void)
     s_repeat = (s_repeat + 1) % 3;
 }
 
-bool audio_shuffle_on(void) { return s_shuffle; }
-int audio_repeat_mode(void) { return s_repeat; }
-
 void audio_toggle_pause(void)
 {
     if (s_audio_lock) xSemaphoreTakeRecursive(s_audio_lock, portMAX_DELAY);
@@ -475,17 +468,6 @@ static bool decode_mp3_once(void)
     s_pcm_off = 0;
     s_pcm_remain = samples;
     return flush_pcm_pending();
-}
-
-void audio_pump(int max_loops)
-{
-    if (s_state != PLAYER_PLAYING) return;
-    for (int i = 0; i < max_loops; i++) {
-        bool ok = false;
-        if (s_type == AUDIO_MP3) ok = decode_mp3_once();
-        else if (s_type == AUDIO_WAV) ok = decode_wav_once();
-        if (!ok) break;
-    }
 }
 
 void audio_service(void)

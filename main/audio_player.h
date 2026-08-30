@@ -1,7 +1,6 @@
 #pragma once
 
 #include <stdint.h>
-#include <stddef.h>
 #include <stdbool.h>
 
 #define AUDIO_RING_FRAMES   4096
@@ -37,18 +36,13 @@ void audio_toggle_pause(void);
 
 void audio_toggle_shuffle(void);
 void audio_cycle_repeat(void);
-bool audio_shuffle_on(void);
-int  audio_repeat_mode(void); /* 0 off, 1 all, 2 one */
 
-void audio_pump(int max_loops); /* lightweight; decode task does the real work */
 void audio_service(void);
 
 player_state_t audio_state(void);
-audio_type_t   audio_type(void);
 int            audio_current_track(void);
 uint32_t       audio_elapsed_sec(void);
 uint32_t       audio_duration_sec(void);
-uint32_t       audio_wav_rate_hz(void);
 const char    *audio_current_album(void);
 
 /** A2DP pull: fills stereo int16 frames[n][2], pads with silence, returns n. */
@@ -59,8 +53,6 @@ void audio_vis_compute(void);
 void audio_vis_decay(void);
 const float *audio_vis_bands(void);
 float audio_vis_sample_rate(void);
-
-size_t audio_ring_avail(void);
 
 #ifdef __cplusplus
 }
